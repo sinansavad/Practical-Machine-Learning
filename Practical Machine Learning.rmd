@@ -1,0 +1,158 @@
+---
+title: "Activity quality prediction using activity monitors"
+author: "Sinan Savad Nalakath"
+date: "21 October 2020"
+output:
+  html_document:
+    keep_md: yes
+---
+
+##Synopsis
+
+Gathering data has been made easier and inexpensive thanks to fitness trackers. These trackers can be used to help the athletes find specific patterns that can be analysed and used to help themselves improve their health. We will be using the data from acceleromenters that have been attached at different parts from 6 participants. The goal will be to predict the mannerisms to help them improve their workout efficiency.
+
+## Data description
+
+The outcome variable is `classe`, a factor variable with 5 levels. For this data set, participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions:
+
+## Initial configuration
+
+The initial configuration consists of loading some required packages and initializing variables.
+
+```{r configuration, echo=TRUE, results='hide'}
+#Data variables
+training.file   <- './data/pml-training.csv'
+test.cases.file <- './data/pml-testing.csv'
+training.url    <- 'http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+test.cases.url  <- 'http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+#Directories
+if (!file.exists("data")){
+  dir.create("data")
+}
+if (!file.exists("data/submission")){
+  dir.create("data/submission")
+}
+#R-Packages
+IscaretInstalled <- require("caret")
+if(!IscaretInstalled){
+    install.packages("caret")
+    library("caret")
+    }
+IsrandomForestInstalled <- require("randomForest")
+if(!IsrandomForestInstalled){
+    install.packages("randomForest")
+    library("randomForest")
+    }
+IsRpartInstalled <- require("rpart")
+if(!IsRpartInstalled){
+    install.packages("rpart")
+    library("rpart")
+    }
+IsRpartPlotInstalled <- require("rpart.plot")
+if(!IsRpartPlotInstalled){
+    install.packages("rpart.plot")
+    library("rpart.plot")
+    }
+# Set seed for reproducability
+set.seed(9999)
+```
+
+## Data processing
+The data is downloaded and processed. 
+
+The `pml-training.csv` data is used to devise training sets.
+The `pml-test.csv` data is used to predict and answer the 20 questions based on the trained model.
+
+```{r dataprocessing, echo=TRUE, results='hide'}
+# Download data
+download.file(training.url, training.file)
+download.file(test.cases.url,test.cases.file )
+# Clean data
+training   <-read.csv(training.file, na.strings=c("NA","#DIV/0!", ""))
+testing <-read.csv(test.cases.file , na.strings=c("NA", "#DIV/0!", ""))
+training<-training[,colSums(is.na(training)) == 0]
+testing <-testing[,colSums(is.na(testing)) == 0]
+# Subset data
+training   <-training[,-c(1:7)]
+testing <-testing[,-c(1:7)]
+```
+
+## Cross-validation
+Cross-validation will be performed by splitting the training data in training (75%) and testing (25%) data.
+
+```{r datasplitting, echo=TRUE, results='hide'}
+subSamples <- createDataPartition(y=training$classe, p=0.75, list=FALSE)
+subTraining <- training[subSamples, ] 
+subTesting <- training[-subSamples, ]
+```
+
+## Expected out-of-sample error
+The expected out-of-sample error will correspond to the quantity: 
+
+## Exploratory analysis
+The variable `classe` contains 5 levels. The plot of the outcome variable shows the frequency of each levels in the subTraining data.
+
+```{r exploranalysis, echo=TRUE}
+plot(subTraining$classe, col="orange", main="Levels of the variable classe", xlab="classe levels", ylab="Frequency")
+```
+
+The plot above shows that Level A is the most frequent classe. D appears to be the least frequent one.
+
+## Prediction models
+In this section a decision tree and random forest will be applied to the data.
+
+### Decision tree
+```{r decisiontree, echo=TRUE}
+# Fit model
+modFitDT <- rpart(classe ~ ., data=subTraining, method="class")
+# Perform prediction
+predictDT <- predict(modFitDT, subTesting, type = "class")
+# Plot result
+rpart.plot(modFitDT, main="Classification Tree", extra=102, under=TRUE, faclen=0)
+```
+
+Following confusion matrix shows the errors of the prediction algorithm.
+
+```{r decisiontreecm, echo=TRUE}
+confusionMatrix(predictDT, subTesting$classe)
+```
+
+### Random forest
+```{r randomforest, echo=TRUE}
+# Fit model
+modFitRF <- randomForest(classe ~ ., data=subTraining, method="class")
+# Perform prediction
+predictRF <- predict(modFitRF, subTesting, type = "class")
+```
+
+Following confusion matrix shows the errors of the prediction algorithm.
+
+```{r randomforestcm, echo=TRUE}
+confusionMatrix(predictRF, subTesting$classe)
+```
+
+## Conclusion
+
+### Result
+
+The confusion matrices show, that the Random Forest algorithm performens better than decision trees. The accuracy for the Random Forest model was 0.995 (95% CI: (0.993, 0.997)) compared to 0.739 (95% CI: (0.727, 0.752)) for Decision Tree model. The random Forest model is choosen.
+
+### Expected out-of-sample error
+The expected out-of-sample error is estimated at 0.005, or 0.5%. The expected out-of-sample error is calculated as 1 - accuracy for predictions made against the cross-validation set. Our Test data set comprises 20 cases. With an accuracy above 99% on our cross-validation data, we can expect that very few, or none, of the test samples will be missclassified.
+
+## Submission
+In this section the files for the project submission are generated using the random forest algorithm on the testing data.
+
+```{r submission, echo=TRUE}
+# Perform prediction
+predictSubmission <- predict(modFitRF, testing, type="class")
+predictSubmission
+# Write files for submission
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("./data/submission/problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(predictSubmission)
